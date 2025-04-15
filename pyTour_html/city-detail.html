@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en" style="height: 100%">
+<head>
+  <meta charset="UTF-8">
+  <title>广东星级旅游景区</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script type="text/javascript">
+    // 解析URL参数
+    function getQueryParam(name) {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get(name);
+    }
+
+    // 显示加载状态
+    function showLoading() {
+      const contentDiv = document.getElementById('content');
+      contentDiv.innerHTML = '<p>加载中...</p>';
+    }
+
+    // 根据城市名称显示内容
+    async function showCityDetail(cityName) {
+      const contentDiv = document.getElementById('content');
+      if (cityName) {
+        document.title = `${cityName}旅游景区`;
+        contentDiv.innerHTML = `
+          <h1>欢迎来到${cityName}</h1>
+          <div id="district-filter">
+            <h3>选择区：</h3>
+            <select id="district-select">
+              <option value="">全部</option>
+            </select>
+          </div>
+          <p>这里是${cityName}的详细介绍。</p>
+          <!-- 玫瑰图容器 -->
+          <div class="chart-container" id="pie-chart"></div>
+          <!-- 柱状图容器 -->
+          <div class="chart-container" id="bar-chart"></div>
+        `;
+        await loadDistricts(cityName);
+      } else {
+        document.title = '未找到城市信息 - 广东星级旅游景区';
+        contentDiv.innerHTML = '<h1>未找到城市信息</h1>';
+      }
+    }
+
+    // 动态加载区数据
+    async function loadDistricts(city) {
+      try {
+        const response = await fetch(`/api/get-district?city=${city}&_=${Date.now()}`);
+        if (!response.ok) throw new Error('网络请求失败');
+        const data = await response.json();
+        const districtSelect = document.getElementById('district-select');
+        districtSelect.innerHTML = '<option value="">全部</option>' + data.map(district => `
+          <option value="${district.county}">${district.county}</option>
+        `).join('');
+
+        // 添加区选择事件监听器
+        districtSelect.addEventListener('change', () => {
+          const selectedCounty = districtSelect.value;
+          loadAttractions(city, selectedCounty);
+        });
+      } catch (error) {
+        console.error('加载区数据失败:', error);
+        alert('加载区数据失败，请稍后重试');
+      }
+    }
+
+    // 动态加载景点数据
+    async function loadAttractions(city, county = '') {
+      try {
+        let url = `/api/get-city?city=${city}&_=${Date.now()}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('网络请求失败');
+        const data = await response.json();
+
+        // 在前端根据 county 筛选数据
+        const filteredData = county ? data.filter(attraction => attraction.county === county) : data;
+
+        const waterfall = document.querySelector('.waterfall');
+        if (filteredData.length === 0) {
+          waterfall.innerHTML = '<p>暂无景点数据</p>';
+        } else {
+          waterfall.innerHTML = filteredData.map(attraction => `
+            <div class="attraction-item" data-city="${attraction.city}" data-county="${attraction.county}" data-location="${attraction.location}" data-pictures="${attraction.pictures}">
+              <img src="${attraction.img}" alt="${attraction.title}">
+              <p>${attraction.title}</p>
+              ${attraction.score !== -1 ? `<p><em>${attraction.score}</em>分</p>` : ''}
+              ${attraction.peopleCount !== -1 ? `<p>有<b>${attraction.peopleCount}</b>人去过</p>` : ''}
+              ${attraction.level !== 'N/A' ? `<p style="color:#4CAF50">${attraction.level}</p>` : ''}
+              ${attraction.price !== -1 ? `<p style="color:#FC361D">最低价格：${attraction.price}元</p>` : ''}
+              <div class="details" style="display: none;">
+                <!-- 添加跳转按钮 -->
+                ${attraction.url ? `
+                  <button class="district-link-button" style="position: absolute; top: 10px; right: 10px; background: none; border: none; cursor: pointer;">
+                    <img src="./static/jiantou.png" alt="查看详情" style="width: 80px; height: 20px;">
+                  </button>
+                ` : ''}
+                <p><strong>地址:</strong>${attraction.location !== 'N/A' ? `<p>${attraction.location}</p>` : '暂无'}</p>
+                <p><strong>详细情况:</strong>${attraction.detail !== 'N/A' ? `<p>${attraction.detail}</p>` : '暂无'}</p>
+                <p><strong>时间:</strong> ${attraction.time}</p>
+                ${attraction.pictures && attraction.pictures.trim() !== '' && !attraction.pictures.includes('https://mp-piao-admincp.qunarzz.com/mp_piao_admin_mp_piao_admin/admin/20217/30d54820c6727b9958d585769ab3c5c2.png_710x360_c2302e12.png') ? `
+                  <div class="image-carousel">
+                    <div class="carousel-inner">
+                      ${attraction.pictures.split('〇').map(pic => `
+                        <div class="carousel-item">
+                          <img src="${pic.trim()}" alt="景点图片" loading="lazy" onerror="this.style.display='none'">
+                        </div>
+                      `).join('')}
+                    </div>
+                    <button class="carousel-control prev">&#10094;</button>
+                    <button class="carousel-control next">&#10095;</button>
+                  </div>
+                ` : '<p>暂无图片</p>'}
+              </div>
+            </div>
+          `).join('');
+
+          // 为每个景点项添加点击事件
+          const attractionItems = document.querySelectorAll('.attraction-item');
+          attractionItems.forEach(item => {
+            item.addEventListener('click', () => {
+              const details = item.querySelector('.details');
+              details.style.display = details.style.display === 'none' ? 'block' : 'none';
+            });
+          });
+
+          // 为跳转按钮添加点击事件
+          const districtLinkButtons = document.querySelectorAll('.district-link-button');
+          districtLinkButtons.forEach(button => {
+            button.addEventListener('click', (event) => {
+              event.stopPropagation(); // 阻止事件冒泡，避免触发父元素的点击事件
+              const attractionItem = button.closest('.attraction-item');
+              const url = data.find(attraction =>
+                attraction.city === attractionItem.dataset.city &&
+                attraction.county === attractionItem.dataset.county &&
+                attraction.location === attractionItem.dataset.location
+              ).url; // 获取对应的 district.url
+              if (url) {
+                window.open(url, '_blank'); // 在新标签页中打开链接
+              } else {
+                alert('未找到对应的链接');
+              }
+            });
+          });
+
+          // 为图片集添加左右滑动功能
+          const carousels = document.querySelectorAll('.image-carousel');
+          carousels.forEach(carousel => {
+            const inner = carousel.querySelector('.carousel-inner');
+            const items = carousel.querySelectorAll('.carousel-item');
+            const prevButton = carousel.querySelector('.prev');
+            const nextButton = carousel.querySelector('.next');
+            let currentIndex = 0;
+
+            const updateCarousel = () => {
+              inner.style.transform = `translateX(-${currentIndex * 100}%)`;
+            };
+
+            prevButton.addEventListener('click', (event) => {
+              event.stopPropagation(); // 阻止事件冒泡
+              if (currentIndex > 0) {
+                currentIndex--;
+                updateCarousel();
+              }
+            });
+
+            nextButton.addEventListener('click', (event) => {
+              event.stopPropagation(); // 阻止事件冒泡
+              if (currentIndex < items.length - 1) {
+                currentIndex++;
+                updateCarousel();
+              }
+            });
+          });
+        }
+      } catch (error) {
+        console.error('加载景点数据失败:', error);
+        alert('加载景点数据失败，请稍后重试');
+      }
+    }
+
+    // 加载玫瑰图
+    async function loadPieChart(city) {
+      try {
+        const response = await fetch(`/api/get-pie-data?city=${city}`);
+        if (!response.ok) throw new Error('网络请求失败');
+        const data = await response.json();
+
+        const pieChart = echarts.init(document.getElementById('pie-chart'));
+        const option = {
+          title: {
+            text: `${city}景区数量分布`,
+            left: 'center'
+          },
+          tooltip: {
+            trigger: 'item',
+            formatter: '{b}: {c} ({d}%)'
+          },
+          series: [
+            {
+              name: '景区数量',
+              type: 'pie',
+              radius: ['25','60%'],
+              roseType: 'radius',
+              data: data.map(item => ({
+                name: item.county,
+                value: item.count
+              })),
+              label: {
+                show: true,
+                formatter: '{b}: {c}',
+                color: '#333',
+                fontSize: 12
+              },
+              emphasis: {
+                itemStyle: {
+                  shadowBlur: 10,
+                  shadowOffsetX: 0,
+                  shadowColor: 'rgba(0, 0, 0, 0.5)'
+                }
+              }
+            }
+          ]
+        };
+        pieChart.setOption(option);
+
+        // 监听窗口大小变化，重新渲染图表
+        window.addEventListener('resize', () => {
+          pieChart.resize();
+        });
+      } catch (error) {
+        console.error('加载玫瑰图数据失败:', error);
+        const pieChartDiv = document.getElementById('pie-chart');
+        pieChartDiv.innerHTML = '<p>加载玫瑰图数据失败，请稍后重试。</p>';
+      }
+    }
+
+    // 加载柱状图
+    async function loadBarChart(city) {
+      try {
+        const response = await fetch(`/api/get-bar-data?city=${city}`);
+        if (!response.ok) throw new Error('网络请求失败');
+        const data = await response.json();
+
+        const barChart = echarts.init(document.getElementById('bar-chart'));
+        const option = {
+          title: {
+            text: `${city}景区价格区间统计`,
+            left: 'center'
+          },
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: {
+              type: 'shadow'
+            }
+          },
+          xAxis: {
+            type: 'category',
+            data: data.map(item => item.interval)
+          },
+          yAxis: {
+            type: 'value'
+          },
+          series: [
+            {
+              name: '景区数量',
+              type: 'bar',
+              data: data.map(item => item.count),
+              itemStyle: {
+                color: '#4a90e2'
+              }
+            }
+          ]
+        };
+        barChart.setOption(option);
+
+        // 监听窗口大小变化，重新渲染图表
+        window.addEventListener('resize', () => {
+          barChart.resize();
+        });
+      } catch (error) {
+        console.error('加载柱状图数据失败:', error);
+        const barChartDiv = document.getElementById('bar-chart');
+        barChartDiv.innerHTML = '<p>加载柱状图数据失败，请稍后重试。</p>';
+      }
+    }
+
+    // 页面加载时执行
+    async function loadData() {
+      showLoading();
+      const cityName = getQueryParam('city');
+      await showCityDetail(cityName);
+      await loadAttractions(cityName);
+      await loadPieChart(cityName);  // 加载玫瑰图
+      await loadBarChart(cityName);  // 加载柱状图
+    }
+
+    window.onload = loadData;
+  </script>
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+      position: relative;
+      background-image: url("{{ url_for('static', filename='水彩风 copy.png') }}");
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      font-family: 'Roboto', sans-serif;
+      color: #fff;
+      overflow: auto;
+    }
+
+    .header-right {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      z-index: 10;
+    }
+
+    img.logo {
+      width: 150px;
+      height: auto;
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+    }
+
+    #city-art {
+      font-size: 40px;
+      font-weight: bold;
+      color: #fff;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      font-family: 'Georgia', serif;
+      display: none;
+    }
+
+    .container {
+      display: flex;
+      position: relative;
+      z-index: 5;
+      height: 100vh;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .waterfall {
+      width: 70%;
+      padding: 20px;
+      column-count: 2;
+      column-gap: 15px;
+      overflow-y: visible;
+      height: 100%;
+    }
+
+    .attraction-item {
+      break-inside: avoid;
+      margin-bottom: 20px;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .attraction-item:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .attraction-item img {
+      width: 100%;
+      border-radius: 12px 12px 0 0;
+    }
+
+    .attraction-item p {
+      margin: 10px 0;
+      font-size: 16px;
+      text-align: center;
+      color: #333;
+    }
+
+    .details {
+      padding: 8px; /* 减少内边距 */
+      background: #f9f9f9;
+      border-top: 1px solid #ddd;
+      font-size: 13px; /* 减小字体大小 */
+      max-width: 100%; /* 限制最大宽度 */
+      position: relative;
+    }
+
+    .details p {
+      margin: 4px 0; /* 减少段落间距 */
+      color: #555;
+      text-align: left;
+    }
+
+    .image-carousel {
+      position: relative;
+      width: 90%; /* 调整轮播容器宽度 */
+      margin: 8px auto; /* 居中显示 */
+      overflow: hidden;
+    }
+
+    .carousel-inner {
+      display: flex;
+      transition: transform 0.5s ease;
+    }
+
+    .carousel-item {
+      min-width: 100%;
+      box-sizing: border-box;
+    }
+
+    .carousel-item img {
+      width: 100%;
+      border-radius: 8px;
+    }
+
+    .carousel-control {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background-color: rgba(0, 0, 0, 0.5);
+      color: white;
+      border: none;
+      padding: 10px;
+      cursor: pointer;
+      font-size: 18px;
+    }
+
+    .carousel-control.prev {
+      left: 10px;
+    }
+
+    .carousel-control.next {
+      right: 10px;
+    }
+
+    #content {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 25%;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+      color: #333;
+      z-index: 10;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px; /* 内容之间的间距 */
+    }
+
+    #content h1 {
+      font-size: 24px;
+      margin-bottom: 10px;
+      color: #4a90e2;
+    }
+
+    #district-filter {
+      margin-bottom: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    #district-filter h3 {
+      font-size: 18px;
+      margin-bottom: 10px;
+      color: #333;
+    }
+
+    #district-select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      font-size: 16px;
+      color: #333;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color 0.3s ease;
+    }
+
+    #district-select:hover {
+      border-color: #4a90e2;
+    }
+
+    #district-select:focus {
+      outline: none;
+      border-color: #4a90e2;
+      box-shadow: 0 0 8px rgba(74, 144, 226, 0.5);
+    }
+
+    #content p {
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    .chart-container {
+      width: 100%;
+      min-height: 200px; /* 最小高度，避免图表过小 */
+      flex: 1; /* 让图表容器根据剩余空间分配高度 */
+    }
+
+    #pie-chart, #bar-chart {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Georgia:wght@700&display=swap" rel="stylesheet">
+</head>
+<body style="height: 100%; margin: 0;">
+  <div class="header-right">
+    <div id="city-art"></div>
+    <img class="logo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
+  </div>
+  <div class="container">
+    <div class="waterfall" style="display: flex; justify-content: flex-start; flex-direction: row; align-items: flex-start; flex-wrap: wrap;"></div>
+    <div id="content">
+      <!-- 内容由 JavaScript 动态生成 -->
+    </div>
+  </div>
+</body>
+</html>

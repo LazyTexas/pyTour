@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en" style="height: 100%">
+<head>
+  <title>PyTour-广东星级旅游景区分布</title>
+  <meta charset="utf-8">
+  <script type="text/javascript" src="https://registry.npmmirror.com/jquery/3.7.1/files/dist/jquery.min.js"></script>
+  <script type="text/javascript" src="https://registry.npmmirror.com/echarts/5.5.1/files/dist/echarts.min.js"></script>
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+      font-family: 'Roboto', sans-serif;
+      background-color: #f0f4f8;
+      overflow: hidden;
+    }
+
+    img.background {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.9; /* 提高背景图透明度 */
+      z-index: -1;
+    }
+
+    img.logo {
+      position: absolute;
+      top: 30px;
+      right: 100px;
+      width: 300px;
+      height: auto;
+      z-index: 10;
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+    }
+
+    #container {
+      height: 100%;
+      position: relative;
+      z-index: 5;
+      background: transparent; /* 将容器背景设置为完全透明 */
+      margin: 0; /* 去掉外边距 */
+    }
+
+    .echarts-tooltip {
+      background: rgba(255, 255, 255, 0.95) !important;
+      border-radius: 8px !important;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
+      border: none !important;
+      padding: 10px !important;
+      font-family: 'Roboto', sans-serif !important;
+    }
+
+    .echarts-tooltip span {
+      color: #333 !important;
+      font-size: 14px !important;
+    }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body style="height: 100%; margin: 0;">
+  <img class="background" src="{{ url_for('static', filename='水彩风.png') }}">
+  <img class="logo" src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
+  <div id="container" style="height: 100%"></div>
+  <script type="text/javascript">
+    var dom = document.getElementById('container');
+    var myChart = echarts.init(dom, null, {
+      renderer: 'canvas',
+      useDirtyRect: false
+    });
+    var app = {};
+    var ROOT_PATH = 'https://echarts.apache.org/examples';
+    var option;
+
+    myChart.showLoading();
+    $.get('{{ url_for('static', filename='GD.json') }}', function (geoJson) {
+      myChart.hideLoading();
+      echarts.registerMap('GD', geoJson);
+      myChart.setOption(
+        (option = {
+          title: {
+            top: 22,
+            text: '欢迎使用PyTour!\n请点击地区跳转页面',
+            left: 'center',
+            textStyle: {
+              color: '#4a90e2',
+              fontSize: 30,
+              fontWeight: 'bold',
+              lineHeight: 40
+            }
+          },
+          tooltip: {
+            trigger: 'item',
+            formatter: '{b}<br/>{c} 处',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            borderColor: '#ddd',
+            borderWidth: 1,
+            padding: 10,
+            textStyle: {
+              color: '#333',
+              fontSize: 14
+            }
+          },
+          toolbox: {
+            show: true,
+            orient: 'vertical',
+            left: 'right',
+            top: 'center',
+            feature: {
+              dataView: { readOnly: false },
+              restore: {},
+              saveAsImage: {}
+            }
+          },
+          visualMap: {
+            min: 0,
+            max: 110,
+            text: ['More', 'Fewer'],
+            realtime: false,
+            calculable: true,
+            bottom: 30,
+            left: 10,
+            inRange: {
+              color: ['#64b5f6', '#81c784', '#fff176', '#ff8a65']
+            },
+            textStyle: {
+              color: '#333'
+            }
+          },
+          series: [
+            {
+              name: '广东星级旅游景区数量',
+              type: 'map',
+              map: 'GD',
+              label: {
+                show: true,
+                color: '#333',
+                fontSize: 12
+              },
+              itemStyle: {
+                areaColor: 'rgba(224, 224, 224, 0.6)', /* 降低地图区域透明度 */
+                borderColor: '#fff',
+                borderWidth: 1
+              },
+              emphasis: {
+                label: {
+                  show: true,
+                  color: '#fff',
+                  fontSize: 14
+                },
+                itemStyle: {
+                  areaColor: '#4a90e2'
+                }
+              },
+              data: [
+                { name: '广州市', value: 103 },
+                { name: '韶关市', value: 45 },
+                { name: '深圳市', value: 17 },
+                { name: '珠海市', value: 12 },
+                { name: '汕头市', value: 18 },
+                { name: '佛山市', value: 40 },
+                { name: '江门市', value: 36 },
+                { name: '湛江市', value: 20 },
+                { name: '茂名市', value: 32 },
+                { name: '肇庆市', value: 41 },
+                { name: '惠州市', value: 48 },
+                { name: '梅州市', value: 51 },
+                { name: '汕尾市', value: 18 },
+                { name: '河源市', value: 29 },
+                { name: '阳江市', value: 18 },
+                { name: '清远市', value: 45 },
+                { name: '东莞市', value: 26 },
+                { name: '中山市', value: 28 },
+                { name: '潮州市', value: 15 },
+                { name: '揭阳市', value: 20 },
+                { name: '云浮市', value: 13 }
+              ]
+            }
+          ]
+        })
+      );
+
+      // 监听点击事件
+      myChart.on('click', function (params) {
+        var cityName = params.name;
+        window.location.href = '{{ url_for('city_detail') }}?city=' + encodeURIComponent(cityName);
+      });
+    });
+
+    if (option && typeof option === 'object') {
+      myChart.setOption(option);
+    }
+
+    window.addEventListener('resize', myChart.resize);
+  </script>
+</body>
+</html>
